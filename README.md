@@ -5,7 +5,7 @@
 This FastAPI-based service receives a request with a **brief** describing an app to build. It uses an **LLM** to generate code, deploys the app to **GitHub Pages**, and notifies an evaluation API. Each request can result in a unique app.
 
 **Example Brief:**  
-_Show an aria-live alert #github-status that reports when a lookup starts, succeeds, or fails._
+_Display the account age in whole years inside #github-account-age alongside the creation date._
 
 ## Revised Version  
 
