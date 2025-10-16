@@ -5,7 +5,7 @@
 This FastAPI-based service receives a request with a **brief** describing an app to build. It uses an **LLM** to generate code, deploys the app to **GitHub Pages**, and notifies an evaluation API. Each request can result in a unique app.
 
 **Example Brief:**  
-_Display the account age in whole years inside #github-account-age alongside the creation date._
+_Cache the last successful lookup in localStorage under 'github-user-100' and repopulate the form on load._
 
 ## Revised Version  
 

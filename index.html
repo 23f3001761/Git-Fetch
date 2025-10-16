@@ -19,128 +19,124 @@
   <div class="container">
     <h1 class="mb-4">GitHub User Creation Date</h1>
 
-    <form id="github-user-100" class="row g-3 align-items-center">
-      <div class="col-auto">
-        <label class="form-label visually-hidden" for="github-username">GitHub username</label>
-        <input type="text" id="github-username" class="form-control" placeholder="GitHub username" required />
+    <form id="github-user-100" class="needs-validation" novalidate>
+      <div class="mb-3">
+        <label for="github-username" class="form-label">GitHub Username</label>
+        <input type="text" class="form-control" id="github-username" placeholder="Enter GitHub username" required/>
+        <div class="form-text">Optionally, you can provide a token via the page URL ?token=YOUR_TOKEN to use for the API request.</div>
       </div>
-      <div class="col-auto">
-        <button type="submit" class="btn btn-primary">Fetch</button>
-      </div>
-      <div class="col-12" aria-live="polite" id="status" style="min-height:1.25em;"></div>
-      <div class="col-12 small text-muted">
-        Optional: append ?token=YOUR_TOKEN to the page URL to authenticate requests.
-      </div>
+      <button type="submit" class="btn btn-primary">Lookup</button>
+      <span id="status" class="ms-2 text-muted" aria-live="polite"></span>
     </form>
 
-    <hr/>
-
-    <div class="row gy-3">
-      <div class="col-12">
-        <strong>Creation date (UTC):</strong>
-        <span id="github-created-at" class="ms-2" style="min-width:200px; display:inline-block;">-</span>
-      </div>
-      <div class="col-12">
-        <strong>Account age:</strong>
-        <span id="github-account-age" class="ms-2" style="min-width:180px; display:inline-block;">-</span>
-      </div>
+    <div class="mt-3">
+      <div id="github-created-at" class="fs-6 text-secondary" aria-live="polite"></div>
     </div>
   </div>
 
+  <!-- Bootstrap Bundle with Popper (latest) -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@latest/dist/js/bootstrap.bundle.min.js"></script>
+
   <script>
-    (function(){
-      document.addEventListener('DOMContentLoaded', function() {
-        const url = new URL(window.location.href);
-        const token = url.searchParams.get('token');
+    (function() {
+      // Helper to get query param from page URL
+      function getQueryParam(name) {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get(name);
+      }
 
-        const form = document.getElementById('github-user-100');
-        const usernameInput = document.getElementById('github-username');
-        const createdAtEl = document.getElementById('github-created-at');
-        const ageEl = document.getElementById('github-account-age');
-        const statusEl = document.getElementById('status');
+      // Format UTC date from ISO 8601 string to "YYYY-MM-DD UTC"
+      function formatDateUTCFromISO(isoString) {
+        if (!isoString) return '';
+        try {
+          const d = new Date(isoString);
+          const y = d.getUTCFullYear();
+          const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+          const day = String(d.getUTCDate()).padStart(2, '0');
+          return `${y}-${m}-${day} UTC`;
+        } catch (e) {
+          return '';
+        }
+      }
 
-        function setStatus(msg) {
-          statusEl.textContent = msg;
+      const form = document.getElementById('github-user-100');
+      const usernameInput = document.getElementById('github-username');
+      const createdAtEl = document.getElementById('github-created-at');
+      const statusEl = document.getElementById('status');
+
+      // On load: repopulate from localStorage if available
+      try {
+        const stored = localStorage.getItem('github-user-100');
+        if (stored) {
+          const obj = JSON.parse(stored);
+          if (obj && obj.username) {
+            usernameInput.value = obj.username;
+          }
+          if (obj && obj.createdAt) {
+            createdAtEl.textContent = obj.createdAt;
+          }
+        }
+      } catch (e) {
+        // ignore JSON parse errors
+      }
+
+      // Form submission handler
+      form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        statusEl.textContent = '';
+        statusEl.className = 'ms-2 text-muted';
+
+        const username = (usernameInput.value || '').trim();
+        if (!username) {
+          statusEl.textContent = 'Please enter a GitHub username.';
+          statusEl.className = 'text-danger';
+          return;
         }
 
-        form.addEventListener('submit', async function(e) {
-          e.preventDefault();
-          const username = (usernameInput.value || '').trim();
-          if (!username) {
-            setStatus('Please enter a GitHub username.');
+        let requestUrl = `https://api.github.com/users/${encodeURIComponent(username)}`;
+        const token = getQueryParam('token');
+        if (token) {
+          // Append token as query parameter to satisfy "optionally uses ?token="
+          requestUrl += `?token=${encodeURIComponent(token)}`;
+        }
+
+        statusEl.textContent = 'Fetching...';
+        statusEl.className = 'text-muted';
+
+        try {
+          const res = await fetch(requestUrl);
+          if (!res.ok) {
+            if (res.status === 404) {
+              statusEl.textContent = 'User not found.';
+            } else if (res.status === 403) {
+              statusEl.textContent = 'Access forbidden or rate limited. Check token or try again later.';
+            } else {
+              statusEl.textContent = `Request failed. Status: ${res.status}`;
+            }
+            statusEl.className = 'text-danger';
             return;
           }
 
-          // Reset display
-          setStatus('Fetching...');
-          createdAtEl.textContent = '-';
-          ageEl.textContent = '-';
+          const data = await res.json();
+          const createdAtFormatted = formatDateUTCFromISO(data.created_at);
+          createdAtEl.textContent = createdAtFormatted || '';
 
-          try {
-            const headers = {
-              'Accept': 'application/vnd.github.v3+json'
-            };
-            if (token) {
-              headers['Authorization'] = 'token ' + token;
-            }
+          statusEl.textContent = 'Lookup successful';
+          statusEl.className = 'text-success';
 
-            const resp = await fetch('https://api.github.com/users/' + encodeURIComponent(username), {
-              headers: headers
-            });
+          // Cache last successful lookup
+          const toStore = {
+            username: data.login || username,
+            createdAt: createdAtFormatted
+          };
+          localStorage.setItem('github-user-100', JSON.stringify(toStore));
 
-            if (!resp.ok) {
-              if (resp.status === 404) {
-                setStatus('User not found.');
-              } else if (resp.status === 401) {
-                setStatus('Unauthorized. Check your token.');
-              } else {
-                setStatus('Error fetching user data: ' + resp.status);
-              }
-              createdAtEl.textContent = '-';
-              ageEl.textContent = '-';
-              return;
-            }
-
-            const data = await resp.json();
-            const createdAtStr = data.created_at;
-            if (!createdAtStr) {
-              setStatus('Creation date not available.');
-              createdAtEl.textContent = '-';
-              ageEl.textContent = '-';
-              return;
-            }
-
-            const createdDate = new Date(createdAtStr);
-            const yyyy = createdDate.getUTCFullYear().toString().padStart(4, '0');
-            const mm = String(createdDate.getUTCMonth() + 1).padStart(2, '0');
-            const dd = String(createdDate.getUTCDate()).padStart(2, '0');
-            const dateStr = `${yyyy}-${mm}-${dd} UTC`;
-            createdAtEl.textContent = dateStr;
-
-            // Compute age in whole years (UTC)
-            const now = new Date();
-            let years = now.getUTCFullYear() - createdDate.getUTCFullYear();
-            const nowMonth = now.getUTCMonth();
-            const createdMonth = createdDate.getUTCMonth();
-            if (nowMonth < createdMonth || (nowMonth === createdMonth && now.getUTCDate() < createdDate.getUTCDate())) {
-              years--;
-            }
-
-            const yearLabel = (years === 1) ? 'year' : 'years';
-            ageEl.textContent = `Account age: ${years} ${yearLabel}`;
-
-            setStatus('Success');
-          } catch (err) {
-            setStatus('Network error or invalid response.');
-            createdAtEl.textContent = '-';
-            ageEl.textContent = '-';
-          }
-        });
+        } catch (err) {
+          statusEl.textContent = 'Error: ' + err.message;
+          statusEl.className = 'text-danger';
+        }
       });
     })();
   </script>
-
-  <!-- Bootstrap JS (optional, for completeness) -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@latest/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
